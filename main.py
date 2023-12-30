@@ -1,6 +1,7 @@
 import numpy as np
 import pyomo.environ
 from pyomo.environ import *
+import Stock_Generator
 
 
 class Stock:
@@ -101,10 +102,12 @@ class Problem:
 
 if __name__ == "__main__":
     # Example usage
-    stock1 = Stock(expected_return=0.05, variance=0.005, cost=150)
-    stock2 = Stock(expected_return=0.1, variance=0.01, cost=100)
+    stocks = Stock_Generator.create()
 
-    market = Market(stocks=[stock1, stock2], covariance=[[0, 0.0005], [0.0005, 0]])
+    for stock in stocks:
+        print(stock.cost)
+
+    market = Market(stocks, covariance=[[0, 0.0005], [0.0005, 0]])
 
     problem = Problem(budget=200, max_variance=0.02, max_variance_total=0.03, market=market)
 
