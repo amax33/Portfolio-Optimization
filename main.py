@@ -102,14 +102,12 @@ class Problem:
 
 if __name__ == "__main__":
     # Example usage
-    stocks = Stock_Generator.create()
+    stocks = Stock_Generator.create_stock()
+    covariance = Stock_Generator.create_matrix()
 
-    for stock in stocks:
-        print(stock.cost)
+    market = Market(stocks, covariance)
 
-    market = Market(stocks, covariance=[[0, 0.0005], [0.0005, 0]])
-
-    problem = Problem(budget=200, max_variance=0.02, max_variance_total=0.03, market=market)
+    problem = Problem(budget=20000, max_variance=0.1, max_variance_total=0.5, market=market)
 
     answer_cplex = problem.solver_cplex()
     answer = np.zeros(problem.market.get_number_of_stocks())
@@ -119,7 +117,7 @@ if __name__ == "__main__":
 
     # checking the answer with the evaluator function
     constrain = problem.evaluator(answer)
-    for i in range(problem.market.get_number_of_stocks()):
+    for i in range(len(constrain)):
         if constrain[i] != 0:
             print('Constrain number ' + str(i) + ' has not comply!')
 
