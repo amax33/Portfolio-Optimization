@@ -1,7 +1,7 @@
+import pyomo.environ as pyo
 import numpy as np
-import pyomo.environ
-from pyomo.environ import *
 import Stock_Generator
+import copy
 
 
 class Stock:
@@ -22,7 +22,8 @@ class Market:
 
 
 class Problem:
-    def __init__(self, budget, max_variance, max_variance_total, market):
+    def __init__(self, budget, max_variance, max_variance_total, market, lambda_=1):
+        self.lambda_ = lambda_  # trade-off between risk and return
         self.Budget = budget  # total budget of the investor
         self.max_variance = max_variance
         # maximum value for the risk of each asset
@@ -55,72 +56,102 @@ class Problem:
         summation = 0
         for i in range(self.Num):
             for j in range(self.Num):
-                summation += solution[i] * solution[j] * self.market.covariance[i][j]
+                risk = solution[i] * solution[j] * self.market.covariance[i][j]
+                if summation < risk:
+                    summation = risk
 
         if summation > self.max_variance_total:
             error[3] = 1
 
         return error
 
-    def solver_cplex(self):
-        model = ConcreteModel()
+    def cost(self, solution):
+        if np.any(self.evaluator(solution)):
+            return np.inf  # non-acceptable solution
 
-        # Sets
-        model.assets = Set(initialize=range(problem.market.get_number_of_stocks()))  # set of assets
+        total_variance = 0
+        total_return = 0
+        for i in range(self.Num):
+            for j in range(self.Num):
+                new_variance = solution[i] * solution[j] * self.market.covariance[i][j]
+                if total_variance < new_variance:
+                    total_variance = new_variance
+            total_return += solution[i] * self.market.stocks[i].expected_return
 
-        # Parameters
-        model.r = Param(model.assets, initialize={i: problem.market.stocks[i].expected_return for i in
-                                                  model.assets})  # expected return
-        model.v = Param(model.assets,
-                        initialize={i: problem.market.stocks[i].variance for i in model.assets})  # variance
-        model.c = Param(model.assets, initialize={i: problem.market.stocks[i].cost for i in model.assets})  # cost
-        model.sigma = Param(model.assets, model.assets,
-                            initialize={(i, j): problem.market.covariance[i][j] for i in model.assets for j in
-                                        model.assets})  # covariance
+        return total_variance - self.lambda_ * total_return
 
-        # Variables
-        model.x = Var(model.assets, within=pyomo.environ.Binary)  # binary variable for each asset
+    def cost_2(self, current_solution, new_solution, current_cost):
+        if np.any(self.evaluator(new_solution)):
+            return np.inf  # non-acceptable solution
 
-        # Objective function
-        model.obj = Objective(expr=sum(model.r[i] * model.x[i] for i in model.assets), sense=maximize)
+        delta_return = 0
+        delta_variance = 0
+        for i in range(self.Num):
+            if current_solution[i] != new_solution[i]:  # if the stock has been added or removed
+                if current_solution[i] == 1:
+                    delta_return -= self.market.stocks[i].expected_return * self.market.stocks[i].cost
+                else:
+                    delta_return += self.market.stocks[i].expected_return * self.market.stocks[i].cost
 
-        # Constraints
-        model.budget_constraint = Constraint(expr=sum(model.c[i] * model.x[i] for i in model.assets) <= problem.Budget)
-        model.risk_total_constraint = Constraint(expr=sum(
-            model.x[i] * model.x[j] * model.sigma[i, j] for i in model.assets for j in
-            model.assets) <= problem.max_variance_total)
-        model.risk_each_constraint = ConstraintList()
-        for i in model.assets:
-            model.risk_each_constraint.add(model.v[i] * model.x[i] <= problem.max_variance)
+                for j in range(self.Num):
+                    risk = new_solution[j] * self.market.covariance[i][j]
+                    if delta_variance < risk:
+                        delta_variance = risk
 
-        # Solver
-        solver = SolverFactory('cplex')
-        solver.solve(model)
+        print("cost", delta_return)
+        print("v", delta_variance)
+        # if we removed the stock
+        if np.sum(new_solution) < np.sum(current_solution):
+            total_return = current_cost - self.lambda_ * delta_return
+            total_variance = current_cost - delta_variance
+        else:  # if we added the stock
+            total_return = current_cost + self.lambda_ * delta_return
+            total_variance = current_cost + delta_variance
 
-        return model.x
+        return total_variance - self.lambda_ * total_return
+
+    def n_one(self, solution):
+        neighbors = []
+        for i in range(self.Num):
+            neighbor = copy.deepcopy(solution)
+            neighbor[i] = 1 - neighbor[i]  # flip the bit
+            neighbors.append(neighbor)
+
+        return neighbors
+
+    def local_search(self):
+        current_solution = np.zeros(self.Num)
+        best_neighbor = None
+        best_cost = np.inf
+        for i in range(100):
+            neighbors = problem.n_one(current_solution)
+            for neighbor in neighbors:
+                cost = problem.cost(neighbor)
+                if cost < best_cost:
+                    best_cost = cost
+                    best_neighbor = neighbor
+            current_solution = best_neighbor
+
+        return current_solution, best_cost
+
 
 
 if __name__ == "__main__":
+    num = int(input("Condition:"))
     # Example usage
-    stocks = Stock_Generator.create_stock()
-    covariance = Stock_Generator.create_matrix()
+    if num == 0:
+        stocks = Stock_Generator.create_stock()
+        covariance = Stock_Generator.create_matrix()
+    else:
+        stocks = Stock_Generator.read_stock()
+        covariance = Stock_Generator.read_matrix_from_file('MatrixData.txt')
 
     market = Market(stocks, covariance)
 
-    problem = Problem(budget=20000, max_variance=0.1, max_variance_total=0.5, market=market)
-
-    answer_cplex = problem.solver_cplex()
-    answer = np.zeros(problem.market.get_number_of_stocks())
-
-    for i in range(problem.market.get_number_of_stocks()):
-        answer[i] = answer_cplex[i].value
-
-    # checking the answer with the evaluator function
-    constrain = problem.evaluator(answer)
-    for i in range(len(constrain)):
-        if constrain[i] != 0:
-            print('Constrain number ' + str(i) + ' has not comply!')
+    problem = Problem(budget=1000, max_variance=0.1, max_variance_total=0.5, market=market)
+    answer, cost = problem.local_search()
+    print(answer)
 
     for i in range(problem.market.get_number_of_stocks()):
-        if answer[i] == 1:
+        if answer[i] >= 1:
             print('Invest in asset ', i + 1)
