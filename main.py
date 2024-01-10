@@ -1,4 +1,3 @@
-import pyomo.environ as pyo
 import numpy as np
 import Stock_Generator
 import copy
@@ -9,6 +8,8 @@ class Stock:
         self.expected_return = expected_return  # Profit
         self.variance = variance  # Risk
         self.cost = cost  # Cost
+        self.score = 0
+        self.number = 0
 
 
 class Market:
@@ -65,6 +66,21 @@ class Problem:
 
         return error
 
+    def cost_greedy(self):
+        solution = np.zeros(self.Num)
+        for i, stock in enumerate(self.market.stocks):
+            stock.score = stock.expected_return * stock.cost #/ stock.variance
+            stock.number = i
+
+        sorted_stock = sorted(self.market.stocks, key=lambda x: x.score, reverse=False)
+        solution = np.zeros(self.Num)
+        Budget = 0
+        for i in range(self.Num):
+            Budget += sorted_stock[i].cost
+            if Budget <= self.Budget and self.market.stocks[sorted_stock[i].number].variance < self.max_variance:
+                solution[sorted_stock[i].number] = 1
+        return solution
+
     def cost(self, solution):
         if np.any(self.evaluator(solution)):
             return np.inf  # non-acceptable solution
@@ -73,11 +89,10 @@ class Problem:
         total_return = 0
         for i in range(self.Num):
             for j in range(self.Num):
-                new_variance = solution[i] * solution[j] * self.market.covariance[i][j]
-                if total_variance < new_variance:
-                    total_variance = new_variance
-            total_return += solution[i] * self.market.stocks[i].expected_return
+                total_variance += solution[i] * solution[j] * self.market.covariance[i][j]/100
+            total_return += solution[i] * self.market.stocks[i].expected_return * self.market.stocks[i].cost/self.Budget
 
+        print("Va", total_variance, "Ri", total_return)
         return total_variance - self.lambda_ * total_return
 
     def cost_2(self, current_solution, new_solution, current_cost):
@@ -120,17 +135,17 @@ class Problem:
         return neighbors
 
     def local_search(self):
-        current_solution = np.zeros(self.Num)
-        best_neighbor = None
+        current_solution = self.cost_greedy()
+        best_neighbor = current_solution
         best_cost = np.inf
         for i in range(100):
-            neighbors = problem.n_one(current_solution)
-            for neighbor in neighbors:
-                cost = problem.cost(neighbor)
-                if cost < best_cost:
-                    best_cost = cost
-                    best_neighbor = neighbor
-            current_solution = best_neighbor
+            neighbor = copy.deepcopy(current_solution)
+            neighbor[i%self.Num] = 1 - neighbor[i%self.Num]  # flip the bit
+            cost = problem.cost(neighbor)
+            if cost < best_cost:
+                best_cost = cost
+                best_neighbor = neighbor
+        current_solution = best_neighbor
 
         return current_solution, best_cost
 
@@ -148,7 +163,7 @@ if __name__ == "__main__":
 
     market = Market(stocks, covariance)
 
-    problem = Problem(budget=1000, max_variance=0.1, max_variance_total=0.5, market=market)
+    problem = Problem(budget=400, max_variance=0.1, max_variance_total=0.5, market=market)
     answer, cost = problem.local_search()
     print(answer)
 

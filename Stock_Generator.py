@@ -3,7 +3,7 @@ from main import Stock
 
 global stocks
 stocks = []
-number = 50
+number = 200
 
 
 def generate_stock_data(filename):
@@ -13,7 +13,6 @@ def generate_stock_data(filename):
             expected_return = random.uniform(0.05, 0.30)
             variance = random.uniform(0.01, 0.10)
             cost = random.randint(25, 70)
-
             data = f"{expected_return},{variance},{cost}\n"
             f.write(data)
 
@@ -55,7 +54,7 @@ def create_symmetric_matrix():
         for j in range(i + 1, number):  # Loop only over the upper triangular part
             # Generate a random number between 0 and 9 (inclusive)
             if i != j:
-                random_number = random.randint(1, 6) / 10
+                random_number = random.randint(-6, 6) / 10
                 matrix[i][j] = random_number  # Assign random number to (i, j)
                 matrix[j][i] = random_number  # Assign same random number to (j, i)
     return matrix
