@@ -4,7 +4,7 @@ import math
 
 global stocks
 stocks = []
-number = 500
+number = 200
 
 def generate_variance(expected_return, number_of_choices = 10):
     variances = []
