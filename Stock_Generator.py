@@ -1,17 +1,26 @@
 import random
 from main import Stock
+import math
 
 global stocks
 stocks = []
 number = 200
 
+def generate_variance(expected_return, number_of_choices = 10):
+    variances = []
+    for _ in range(number_of_choices):
+        alpha = random.uniform(1.00,6.00)
+        generated_var = math.exp(-alpha * expected_return) / 10
+        variances.append(generated_var)
+    selected_var = random.choice(variances)
+    return selected_var
 
 def generate_stock_data(filename):
     with open(filename, 'w') as f:
         f.truncate()
         for _ in range(number):
             expected_return = random.uniform(0.05, 0.30)
-            variance = random.uniform(0.01, 0.10)
+            variance = generate_variance(expected_return)
             cost = random.randint(25, 70)
             data = f"{expected_return},{variance},{cost}\n"
             f.write(data)
