@@ -1,5 +1,5 @@
 import random
-from main import Stock
+from calculator import Stock
 import math
 
 global stocks

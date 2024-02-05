@@ -1,8 +1,6 @@
-import collections
 import heapq
-
 import numpy as np
-import pyomo.environ
+import pyomo
 from pyomo.environ import *
 import Stock_Generator
 import copy
@@ -132,7 +130,7 @@ class Problem:
         total_return = 0
         for i in range(self.Num):
             for j in range(self.Num):
-                total_variance += solution[i] * solution[j] * self.market.covariance[i][j]/10
+                total_variance += solution[i] * solution[j] * self.market.covariance[i][j]/100
             total_return += solution[i] * self.market.stocks[i].expected_return * self.market.stocks[i].cost/self.Budget
             #print("P" + str(total_return) + "R" + str(total_variance))
         return total_variance - self.lambda_ * total_return
@@ -176,7 +174,7 @@ class Problem:
         best_neighbor = current_solution
         best_cost = cost
         no_improvement_iterations = 0
-        for i in range(self.Num*5):
+        for i in range(self.Num*4):
             if no_improvement_iterations > self.Num:  # Stopping criteria based on lack of improvement
                 break
             neighbor = copy.deepcopy(current_solution)
@@ -200,7 +198,7 @@ class Problem:
         best_neighbor = current_solution
         best_cost = cost
 
-        for i in range(self.Num*5):
+        for i in range(self.Num*4):
             neighbor = copy.deepcopy(current_solution)
             for _ in range(2):
                 rand = random.randint(0, self.Num - 1)
@@ -219,7 +217,7 @@ class Problem:
         cost = self.cost(current_solution)
         best_neighbor = current_solution
         best_cost = cost
-        for i in range(self.Num*2):
+        for i in range(self.Num*4):
             neighbor = copy.deepcopy(current_solution)
             counter = 0
             for j in range(self.Num):
@@ -265,7 +263,7 @@ class Problem:
     def tabu_search(self, iterations=100, tabu_tenure=5, num_neighbors=10):
         current_solution = self.answer_greedy()
         best_solution = current_solution
-        best_cost = self.cost_3(current_solution)
+        best_cost = self.cost(current_solution)
         tabu_set = set()  # Use a set for the tabu list
 
         for it in range(iterations):
@@ -286,11 +284,9 @@ class Problem:
                     neighbor[rand] = 1 - current_solution[rand]
 
                 # Check if neighbor is tabu (simplified check assuming unique solutions)
-                if tuple(neighbor) not in tabu_set and self.cost_3(neighbor) != np.inf:
-                    if best_cost != np.inf:
-                        heapq.heappush(neighborhood, (self.cost_2(best_solution, neighbor, best_cost), neighbor))  # Use a heap for the neighborhood
-                    else:
-                        heapq.heappush(neighborhood, (self.cost_3(neighbor), neighbor))
+                cost = self.cost(neighbor)
+                if tuple(neighbor) not in tabu_set and cost != np.inf:
+                    heapq.heappush(neighborhood, (cost, neighbor))
 
             # If no valid neighbors, continue to next iteration
             if not neighborhood:
@@ -316,14 +312,14 @@ class Problem:
         for i in range(self.Num):
             T_risk += solution[i] * self.market.stocks[i].variance
             for j in range(self.Num):
-                T_risk += solution[i] * solution[j] * self.market.covariance[i][j]
+                T_risk += solution[i] * solution[j] * self.market.covariance[i][j] / 2
 
         return T_risk
 
     def calculate_profit(self, solution):
         T_profit = 0
         for i in range(self.Num):
-            T_profit += solution[i] * self.market.stocks[i].expected_return
+            T_profit += solution[i] * self.market.stocks[i].expected_return * self.market.stocks[i].cost
         return T_profit
 
 
@@ -340,7 +336,7 @@ if __name__ == "__main__":
         covariance = Stock_Generator.read_matrix_from_file('MatrixData.txt')
 
     market = Market(stocks, covariance)
-    problem = Problem(budget=400, max_variance=0.05, max_variance_total=0.05, market=market)
+    problem = Problem(budget=400, max_variance=0.05, max_variance_total=0.5, market=market)
     answer, cost = problem.VNS()
     for i in range(problem.market.get_number_of_stocks()):
         if answer[i] >= 1:
@@ -350,15 +346,15 @@ if __name__ == "__main__":
     print(problem.calculate_profit(answer))
 
 
-    # Use the Pyomo-based solution
-    answer_pyomo = problem.solver_cplex()
-    # Print the Pyomo-based results
-    for i in range(problem.market.get_number_of_stocks()):
-        if answer_pyomo[i] >= 1:
-            print('Invest in asset ', i + 1)
-
-    print(problem.calculate_risk(answer_pyomo))
-    print(problem.calculate_profit(answer_pyomo))
+    # # Use the Pyomo-based solution
+    # answer_pyomo = problem.solver_cplex()
+    # # Print the Pyomo-based results
+    # for i in range(problem.market.get_number_of_stocks()):
+    #     if answer_pyomo[i] >= 1:
+    #         print('Invest in asset ', i + 1)
+    #
+    # print(problem.calculate_risk(answer_pyomo))
+    # print(problem.calculate_profit(answer_pyomo))
 
 
 
